@@ -66,7 +66,8 @@ PROGS = alimask\
 	nhmmer\
 	nhmmscan\
 	hmmscant\
-	makehmmerdb
+	makehmmerdb\
+	hmmgwt
 
 # "auxprogs" are built but not installed.
 AUXPROGS = \
@@ -93,7 +94,8 @@ PROGOBJS =\
 	nhmmer.o\
 	nhmmscan.o\
 	hmmscant.o\
-	makehmmerdb.o
+	makehmmerdb.o\
+	hmmgwt.o
 
 AUXPROGOBJS = \
 	hmmc2.o \
@@ -208,8 +210,8 @@ UTESTS =\
 	p7_tophits_utest\
 	p7_trace_utest\
 	p7_scoredata_utest\
-  hmmpgmd2msa_utest\
-  hmmd_search_status_utest
+	hmmpgmd2msa_utest\
+	hmmd_search_status_utest
 
 ITESTS = \
 	itest_brute
