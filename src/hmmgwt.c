@@ -173,35 +173,6 @@ void seq_fail(const char *fpath, int status, ESL_SQFILE *seqfile)
     esl_fatal("Unexpected error %d reading sequence file %s", status, fpath);
 }
 
-void hmm_scan(struct WORKER_INFO *info, P7_HMMFILE *hfp)
-{
-  int status;
-
-  P7_OPROFILE *om = NULL;
-  ESL_ALPHABET *abc = NULL;
-
-  while ((status = p7_oprofile_ReadMSV(hfp, &abc, &om)) == eslOK) {
-    p7_pli_NewModel(info->pli, om, info->bg);
-    p7_bg_SetLength(info->bg, info->sq->n);
-    p7_oprofile_ReconfigLength(om, info->sq->n);
-
-    status = p7_Pipeline(info->pli, om, info->bg, info->sq, NULL, info->th, NULL);
-    if (status == eslEINVAL) p7_Fail(info->pli->errbuf);
-
-    p7_oprofile_Destroy(om);
-    p7_pipeline_Reuse(info->pli);
-  }
-
-  esl_alphabet_Destroy(abc);
-
-  if (status == eslEFORMAT)
-    p7_Fail("bad file format in HMM file %s", info->cfg->hfpath);
-  if (status == eslEINCOMPAT)
-    p7_Fail("HMM file %s contains different alphabets", info->cfg->hfpath);
-  if (status != eslOK && status != eslEOF)
-    p7_Fail("Unexpected error in reading HMMs from %s", info->cfg->hfpath);
-}
-
 P7_HMMFILE *open_hmmfile(const char *hfpath)
 {
   P7_HMMFILE *hfp = NULL;
@@ -220,10 +191,80 @@ P7_HMMFILE *open_hmmfile(const char *hfpath)
   return hfp;
 }
 
+void hmm_read_fail(const char *fpath, int status)
+{
+  switch (status) {
+    case eslEOD:
+      p7_Fail("read failed, HMM file %s may be truncated?", fpath);
+      break;
+    case eslEFORMAT:
+      p7_Fail("bad file format in HMM file %s", fpath);
+      break;
+    case eslEINCOMPAT:
+      p7_Fail("HMM file %s contains different alphabets", fpath);
+      break;
+    case eslEOF:
+      p7_Fail("Unexpected end of HMM file %s", fpath);
+      break;
+    default:
+      p7_Fail("Unexpected error (%d) in reading HMMs from %s", status, fpath);
+  }
+}
+
+P7_HMM *read_hmm_model(const char *fpath)
+{
+  P7_HMM *hmm = NULL;
+  ESL_ALPHABET *abc = NULL;
+  P7_HMMFILE *hfp = open_hmmfile(fpath);
+  int hstatus = p7_hmmfile_Read(hfp, &abc, &hmm);
+  if (hstatus) hmm_read_fail(fpath, hstatus);
+  p7_hmmfile_Close(hfp);
+  esl_alphabet_Destroy(abc);
+  return hmm;
+}
+
+void hmm_scan(struct WORKER_INFO *info, P7_HMMFILE *hfp)
+{
+  int status;
+
+  P7_OPROFILE *om = NULL;
+  ESL_ALPHABET *abc = NULL;
+  P7_HMM *hmm = read_hmm_model(info->cfg->hfpath);
+
+  while ((status = p7_oprofile_ReadMSV(hfp, &abc, &om)) == eslOK) {
+    p7_pli_NewModel(info->pli, om, info->bg);
+    p7_bg_SetLength(info->bg, info->sq->n);
+    p7_oprofile_ReconfigLength(om, info->sq->n);
+
+    P7_PROFILE *gm = p7_profile_Create(hmm->M, abc);
+    p7_ProfileConfig(hmm, info->bg, gm, info->sq->n, p7_LOCAL);
+    P7_GMX *gx = p7_gmx_Create(gm->M, info->sq->L);
+    status = p7_PipelineHorta(info->pli, gm, om, gx, info->bg, info->sq, NULL, info->th,
+                              NULL);
+    p7_gmx_Destroy(gx);
+    p7_profile_Destroy(gm);
+
+    if (status == eslEINVAL) p7_Fail(info->pli->errbuf);
+
+    p7_oprofile_Destroy(om);
+    p7_pipeline_Reuse(info->pli);
+  }
+
+  esl_alphabet_Destroy(abc);
+  p7_hmm_Destroy(hmm);
+
+  if (status == eslEFORMAT)
+    p7_Fail("bad file format in HMM file %s", info->cfg->hfpath);
+  if (status == eslEINCOMPAT)
+    p7_Fail("HMM file %s contains different alphabets", info->cfg->hfpath);
+  if (status != eslOK && status != eslEOF)
+    p7_Fail("Unexpected error in reading HMMs from %s", info->cfg->hfpath);
+}
+
 int show_seq_desc(FILE *ofp, const ESL_SQ *sq)
 {
   int status = eslOK;
-  FPRINTF(stdout, "Query:       %s  [L=%ld]\n", sq->name, (long)sq->n);
+  FPRINTF(ofp, "Query:       %s  [L=%ld]\n", sq->name, (long)sq->n);
   if (sq->acc[0]) FPRINTF(ofp, "Accession:   %s\n", sq->acc);
   if (sq->desc[0]) FPRINTF(ofp, "Description: %s\n", sq->desc);
   return status;
@@ -291,26 +332,6 @@ int get_seqfile_format(const ESL_GETOPTS *go)
               esl_opt_GetString(go, "--qformat"));
   }
   return seqfile_fmt;
-}
-
-void hmm_read_fail(const char *fpath, int status)
-{
-  switch (status) {
-    case eslEOD:
-      p7_Fail("read failed, HMM file %s may be truncated?", fpath);
-      break;
-    case eslEFORMAT:
-      p7_Fail("bad file format in HMM file %s", fpath);
-      break;
-    case eslEINCOMPAT:
-      p7_Fail("HMM file %s contains different alphabets", fpath);
-      break;
-    case eslEOF:
-      p7_Fail("Unexpected end of HMM file %s", fpath);
-      break;
-    default:
-      p7_Fail("Unexpected error (%d) in reading HMMs from %s", status, fpath);
-  }
 }
 
 ESL_ALPHABET *read_hmm_alphabet(const char *fpath)
