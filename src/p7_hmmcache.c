@@ -77,6 +77,7 @@ p7_hmmcache_Open(char *hmmfile, P7_HMMCACHE **ret_cache, char *errbuf)
 	cache->lalloc *= 2;
       }
       
+      om->idx = (int64_t) cache->n;
       cache->list[cache->n++] = om;
       om = NULL;
     }
