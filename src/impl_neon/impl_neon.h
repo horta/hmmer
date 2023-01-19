@@ -112,6 +112,7 @@ typedef struct p7_oprofile_s {
   /* Information, annotation copied from parent profile:                             */
   char  *name;      /* unique name of model                              */
   char  *acc;      /* unique accession of model, or NULL                */
+  int64_t idx;                  /* ctr for this model                                */
   char  *desc;                  /* brief (1-line) description of model, or NULL      */
   char  *rf;                    /* reference line           1..M; *ref=0: unused     */
   char  *mm;                    /* modelmask line           1..M; *ref=0: unused     */
